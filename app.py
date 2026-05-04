@@ -480,16 +480,34 @@ def extract_text_from_epub(file_bytes: bytes) -> str:
 
 
 def extract_uploaded_text(uploaded_file) -> str:
-    """Despacha la extracción según la extensión del archivo subido."""
+    """Despacha la extracción según la extensión del archivo subido.
+
+    Importante: se utiliza ``getvalue()`` (en lugar de ``read()``) para evitar
+    que el cursor del UploadedFile quede al final tras la primera lectura y que
+    los reruns posteriores de Streamlit obtengan bytes vacíos.
+    """
     if uploaded_file is None:
         return ""
     name = uploaded_file.name.lower()
-    data = uploaded_file.read()
+    if hasattr(uploaded_file, "getvalue"):
+        data = uploaded_file.getvalue()
+    else:
+        try:
+            uploaded_file.seek(0)
+        except Exception:
+            pass
+        data = uploaded_file.read()
     if name.endswith(".pdf"):
         return extract_text_from_pdf(data)
     if name.endswith(".epub"):
         return extract_text_from_epub(data)
     if name.endswith(".txt"):
+        # Detección de codificación tolerante (UTF-8, latin-1)
+        for enc in ("utf-8", "utf-8-sig", "latin-1", "cp1252"):
+            try:
+                return data.decode(enc)
+            except UnicodeDecodeError:
+                continue
         return data.decode("utf-8", errors="replace")
     raise ValueError(f"Formato no soportado: {name}")
 
@@ -730,39 +748,8 @@ Vocab     : {len(vocab):,}""",
         col1, col2 = st.columns([3, 2])
 
         with col1:
-            uploaded_file = st.file_uploader(
-                "Cargar documento (PDF, EPUB o TXT en inglés)",
-                type=["pdf", "epub", "txt"],
-                help=("El texto se procesará en inglés. Si activa la traducción, "
-                      "el resumen se entregará también en español."),
-            )
-
-            extracted_text = ""
-            if uploaded_file is not None:
-                try:
-                    with st.spinner(f"Extrayendo texto de {uploaded_file.name} ..."):
-                        extracted_text = extract_uploaded_text(uploaded_file)
-                    if extracted_text:
-                        st.success(
-                            f"{CHECK} {len(extracted_text.split()):,} palabras extraídas "
-                            f"de {uploaded_file.name}."
-                        )
-                    else:
-                        st.warning("No se pudo extraer texto del archivo.")
-                except Exception as exc:
-                    st.error(f"Error al procesar el archivo: {exc}")
-
-            article_input = st.text_area(
-                "O pegue el texto a resumir aquí (en inglés):",
-                value=extracted_text,
-                height=260,
-                placeholder=("Ingrese el artículo o pegue el contenido extraído del archivo. "
-                             "Ejemplo: The president announced a new climate policy ..."),
-                key="article_input",
-            )
-
-            st.markdown("**Ejemplos de referencia:**")
-            ex1, ex2, ex3 = st.columns(3)
+            # ── Ejemplos predefinidos (deben evaluarse antes del text_area
+            # para poder escribir en st.session_state["article_input"]) ──
             example_articles = {
                 "Política": (
                     "The president announced a sweeping new climate policy that would "
@@ -789,21 +776,76 @@ Vocab     : {len(vocab):,}""",
                     "power."
                 ),
             }
+
+            # ── Cargue de archivos (PDF / EPUB / TXT) ──
+            uploaded_file = st.file_uploader(
+                "Cargar documento (PDF, EPUB o TXT en inglés)",
+                type=["pdf", "epub", "txt"],
+                help=("El texto se procesará en inglés. Si activa la traducción, "
+                      "el resumen se entregará también en español."),
+                key="uploader",
+            )
+
+            # Detectar nuevos cargues por (nombre, tamaño) para no reextraer
+            # en cada rerun y para escribir el contenido en session_state
+            # ANTES de instanciar el text_area.
+            if uploaded_file is not None:
+                file_id = (uploaded_file.name, getattr(uploaded_file, "size", None))
+                if st.session_state.get("_last_uploaded_id") != file_id:
+                    try:
+                        with st.spinner(
+                            f"Extrayendo texto de {uploaded_file.name} ..."
+                        ):
+                            extracted_text = extract_uploaded_text(uploaded_file)
+                        if extracted_text and extracted_text.strip():
+                            st.session_state["article_input"] = extracted_text
+                            st.session_state["_last_uploaded_id"] = file_id
+                            st.success(
+                                f"{CHECK} {len(extracted_text.split()):,} palabras "
+                                f"extraídas de {uploaded_file.name}."
+                            )
+                        else:
+                            st.warning(
+                                "No se pudo extraer texto del archivo "
+                                "(documento vacío o ilegible)."
+                            )
+                    except Exception as exc:
+                        st.error(f"Error al procesar el archivo: {exc}")
+
+            # Botones de ejemplo (escriben directamente en session_state
+            # antes de que el text_area se renderice).
+            st.markdown("**Ejemplos de referencia:**")
+            ex1, ex2, ex3 = st.columns(3)
             if ex1.button("Política"):
-                st.session_state["prefill_article"] = example_articles["Política"]
+                st.session_state["article_input"] = example_articles["Política"]
+                st.session_state["_last_uploaded_id"] = None
                 st.rerun()
             if ex2.button("Economía"):
-                st.session_state["prefill_article"] = example_articles["Economía"]
+                st.session_state["article_input"] = example_articles["Economía"]
+                st.session_state["_last_uploaded_id"] = None
                 st.rerun()
             if ex3.button("Ciencia"):
-                st.session_state["prefill_article"] = example_articles["Ciencia"]
+                st.session_state["article_input"] = example_articles["Ciencia"]
+                st.session_state["_last_uploaded_id"] = None
                 st.rerun()
 
-            if "prefill_article" in st.session_state:
-                article_input = st.session_state.pop("prefill_article")
+            # ── text_area gobernado por session_state ──
+            # No se pasa `value=`: cuando hay `key=`, Streamlit toma el
+            # contenido de st.session_state[key]. Así, el texto extraído del
+            # archivo y los ejemplos se reflejan correctamente en el widget.
+            article_input = st.text_area(
+                "O pegue el texto a resumir aquí (en inglés):",
+                height=260,
+                placeholder=(
+                    "Ingrese el artículo o pegue el contenido extraído del archivo. "
+                    "Ejemplo: The president announced a new climate policy ..."
+                ),
+                key="article_input",
+            )
 
-            generate_btn = st.button("Generar resumen", type="primary",
-                                     use_container_width=True)
+            generate_btn = st.button(
+                "Generar resumen", type="primary", use_container_width=True
+            )
 
         with col2:
             if st.session_state.get("last_summary"):
