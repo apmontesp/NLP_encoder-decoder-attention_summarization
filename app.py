@@ -431,6 +431,60 @@ def load_translator_en_es():
         return None
 
 
+@st.cache_resource(show_spinner=False)
+def load_translator_es_en():
+    """Traductor MarianMT ES → EN. Permite resumir documentos en español."""
+    try:
+        from transformers import pipeline
+        return pipeline("translation",
+                        model="Helsinki-NLP/opus-mt-es-en",
+                        device=-1, framework="pt")
+    except Exception:
+        return None
+
+
+# Heurística simple de detección de idioma (sin dependencias externas)
+_SPANISH_HINTS = {
+    "que", "para", "como", "pero", "más", "mas", "donde", "cuando",
+    "porque", "esta", "está", "estaba", "fue", "fueron", "uno", "una",
+    "del", "los", "las", "señor", "señora", "años", "día", "noche",
+    "casa", "tiempo", "hombre", "mujer", "muy", "también", "sólo", "solo",
+    "sino", "sin", "según", "según", "después", "antes", "entonces",
+}
+_ENGLISH_HINTS = {
+    "the", "and", "of", "to", "in", "is", "was", "were", "are", "for",
+    "with", "that", "this", "from", "have", "has", "had", "their", "they",
+    "would", "could", "should", "where", "when", "while", "after", "before",
+    "according", "between", "through", "however", "because",
+}
+
+
+def detect_language(text: str) -> str:
+    """Devuelve 'es', 'en' o 'unknown' usando una heurística léxica.
+
+    Cuenta palabras función características de cada idioma sobre la primera
+    porción del documento. Suficiente para distinguir español de inglés;
+    no pretende ser robusto frente a otros idiomas.
+    """
+    sample = text[:4000].lower()
+    # Tokenización simple manteniendo letras Unicode
+    import re as _re
+    tokens = _re.findall(r"[a-záéíóúñü]+", sample, flags=_re.IGNORECASE)
+    if len(tokens) < 5:
+        return "unknown"
+    es_hits = sum(1 for t in tokens if t in _SPANISH_HINTS)
+    en_hits = sum(1 for t in tokens if t in _ENGLISH_HINTS)
+    # Pista adicional: presencia de caracteres exclusivos del español
+    has_spanish_chars = bool(_re.search(r"[áéíóúñ¡¿]", sample))
+    if has_spanish_chars and es_hits >= en_hits:
+        return "es"
+    if es_hits > en_hits * 1.2:
+        return "es"
+    if en_hits > es_hits * 1.2:
+        return "en"
+    return "unknown"
+
+
 # ════════════════════════════════════════════════════════════════════════════
 # Extracción de texto desde archivos PDF y EPUB
 # ════════════════════════════════════════════════════════════════════════════
@@ -515,16 +569,16 @@ def extract_uploaded_text(uploaded_file) -> str:
 # ════════════════════════════════════════════════════════════════════════════
 # Traducción inglés → español por trozos
 # ════════════════════════════════════════════════════════════════════════════
-def translate_en_to_es(text: str, translator) -> str:
-    """Traduce un texto del inglés al español dividiéndolo en oraciones."""
+def _translate_in_chunks(text: str, translator, max_chars: int = 350) -> str:
+    """Traduce texto largo dividiéndolo por oraciones para no exceder el
+    límite de 512 tokens de los modelos MarianMT."""
     if translator is None or not text.strip():
         return ""
-    # Partir por puntos para no exceder los 512 tokens del modelo MarianMT
     sentences = re.split(r"(?<=[\.\!\?])\s+", text.strip())
     out = []
     buffer = ""
     for s in sentences:
-        if len(buffer) + len(s) < 350:
+        if len(buffer) + len(s) < max_chars:
             buffer = (buffer + " " + s).strip()
         else:
             if buffer:
@@ -533,6 +587,21 @@ def translate_en_to_es(text: str, translator) -> str:
     if buffer:
         out.append(translator(buffer)[0]["translation_text"])
     return " ".join(out)
+
+
+def translate_en_to_es(text: str, translator) -> str:
+    """Traduce un texto del inglés al español por trozos."""
+    return _translate_in_chunks(text, translator)
+
+
+def translate_es_to_en(text: str, translator) -> str:
+    """Traduce un texto del español al inglés por trozos.
+
+    Para entradas muy largas (libros enteros, p. ej. *Cien años de soledad*)
+    el modelo MarianMT puede tardar minutos. Se acota la entrada a los
+    primeros 12 000 caracteres para mantener la app responsiva.
+    """
+    return _translate_in_chunks(text[:12000], translator)
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -657,7 +726,7 @@ def main():
     status_tag = (
         f'<span class="tag green">{CHECK} Modelo entrenado cargado</span>'
         if model_loaded
-        else '<span class="tag amber">Modo demostración — entrene el notebook para cargar pesos</span>'
+        else '<span class="tag amber">Modo demostración — pesos aleatorios</span>'
     )
     st.markdown(
         f"""
@@ -675,6 +744,18 @@ def main():
     """,
         unsafe_allow_html=True,
     )
+
+    # Aviso prominente cuando no hay checkpoint entrenado
+    if not model_loaded:
+        st.warning(
+            "**Modo demostración activo.** El archivo `best_model.pt` no se "
+            "encontró en el directorio, así que el backend *Modelo entrenado* "
+            "está operando con pesos aleatorios y un vocabulario reducido — los "
+            "resúmenes serán secuencias de palabras sin sentido. Para obtener "
+            "resultados reales: (1) ejecute el notebook hasta el final y copie "
+            "`best_model.pt` y `vocab.pkl` junto a `app.py`, o (2) cambie el "
+            "backend en la barra lateral a **BART preentrenado (Hugging Face)**."
+        )
 
     # ── Sidebar ─────────────────────────────────────────────────────────────
     with st.sidebar:
@@ -699,11 +780,22 @@ def main():
         max_len = st.slider("Longitud máxima del resumen (tokens)", 30, 200, 80, 5)
         num_beams = st.slider("Beams (sólo BART)", 1, 8, 4, 1)
 
-        st.markdown("### Traducción")
-        translate_to_spanish = st.checkbox(
-            f"Traducir resumen al español (EN → ES)",
+        st.markdown("### Idioma")
+        output_language = st.radio(
+            "Idioma del resumen",
+            options=["Español", "Inglés"],
+            index=0,
+            horizontal=True,
+            help=("Idioma en el que se mostrará el resumen final. El modelo "
+                  "opera internamente en inglés; si elige español el resumen "
+                  "se traduce con Helsinki-NLP/opus-mt-en-es."),
+        )
+        auto_translate_input = st.checkbox(
+            "Traducir entrada automáticamente al inglés si está en español",
             value=True,
-            help="Utiliza Helsinki-NLP/opus-mt-en-es (MarianMT)."
+            help=("El modelo se entrena con CNN/DailyMail en inglés. Esta opción "
+                  "detecta el idioma del documento y, si es español, lo traduce "
+                  "al inglés antes de resumir. Utiliza Helsinki-NLP/opus-mt-es-en."),
         )
 
         st.markdown("### Visualización")
@@ -850,27 +942,45 @@ Vocab     : {len(vocab):,}""",
         with col2:
             if st.session_state.get("last_summary"):
                 summary, attn_weights, src_ids = st.session_state["last_summary"]
+                summary_es = st.session_state.get("last_summary_es", "")
+                lang_choice = st.session_state.get(
+                    "last_summary_lang", output_language
+                )
+
+                # Resumen principal en el idioma elegido por el usuario
+                if lang_choice == "Español" and summary_es:
+                    primary_label = "Resumen (español)"
+                    primary_text = summary_es
+                    primary_border = "#10b981"
+                    primary_label_color = "#6ee7b7"
+                    secondary_label = "Versión original generada por el modelo (inglés)"
+                    secondary_text = summary
+                else:
+                    primary_label = "Resumen (inglés)"
+                    primary_text = summary
+                    primary_border = "#6366f1"
+                    primary_label_color = "#818cf8"
+                    secondary_label = ""
+                    secondary_text = ""
+
                 st.markdown(
                     f"""
-                <div class="summary-box">
-                  <div class="summary-label">Resumen (inglés)</div>
-                  <div class="summary-text">{summary}</div>
+                <div class="summary-box" style="border-left-color:{primary_border};">
+                  <div class="summary-label" style="color:{primary_label_color};">{primary_label}</div>
+                  <div class="summary-text">{primary_text}</div>
                 </div>
                 """,
                     unsafe_allow_html=True,
                 )
 
-                # Traducción al español si aplica
-                if translate_to_spanish and st.session_state.get("last_summary_es"):
-                    st.markdown(
-                        f"""
-                    <div class="summary-box" style="border-left-color:#10b981;">
-                      <div class="summary-label" style="color:#6ee7b7;">Resumen (español)</div>
-                      <div class="summary-text">{st.session_state['last_summary_es']}</div>
-                    </div>
-                    """,
-                        unsafe_allow_html=True,
-                    )
+                # Versión secundaria (solo cuando el principal está en español):
+                # mostramos también el inglés en un expander para fines académicos.
+                if secondary_text:
+                    with st.expander(secondary_label, expanded=False):
+                        st.markdown(
+                            f'<div class="summary-text">{secondary_text}</div>',
+                            unsafe_allow_html=True,
+                        )
 
                 src_words = len(article_input.split()) if article_input else 0
                 trg_words = len(summary.split())
@@ -912,44 +1022,93 @@ Vocab     : {len(vocab):,}""",
         # Acción del botón
         if generate_btn and article_input and len(article_input.strip()) > 20:
             try:
+                # ── (1) Detección de idioma y traducción ES → EN si aplica ──
+                lang = detect_language(article_input)
+                input_for_model = article_input
+                if lang == "es" and auto_translate_input:
+                    es_en = load_translator_es_en()
+                    if es_en is None:
+                        st.warning(
+                            "Se detectó español pero no fue posible cargar el "
+                            "traductor ES → EN. Instale 'transformers' y "
+                            "'sentencepiece'. Continuando con el texto original."
+                        )
+                    else:
+                        with st.spinner(
+                            f"Texto detectado en español. Traduciendo a inglés "
+                            f"antes de resumir ..."
+                        ):
+                            input_for_model = translate_es_to_en(
+                                article_input, es_en
+                            )
+                        st.info(
+                            f"{CHECK} Entrada traducida al inglés "
+                            f"({len(input_for_model.split()):,} palabras)."
+                        )
+                elif lang == "es" and not auto_translate_input:
+                    st.warning(
+                        "El texto parece estar en español, pero la traducción "
+                        "automática ES → EN está desactivada. El modelo está "
+                        "entrenado en inglés; los resultados pueden ser pobres."
+                    )
+
+                # ── (2) Resumen ──
                 if backend.startswith("BART"):
                     summarizer = load_hf_summarizer()
                     if summarizer is None:
-                        st.error("No fue posible cargar BART. Verifique la instalación de transformers.")
-                    else:
-                        with st.spinner("Generando resumen con BART preentrenado ..."):
-                            summary_en = generate_summary_bart(
-                                article_input, summarizer,
-                                max_length=max_len, min_length=max(20, max_len // 4),
-                                num_beams=num_beams,
-                            )
-                            st.session_state["last_summary"] = (summary_en, [], [])
+                        st.error(
+                            "No fue posible cargar BART. Verifique la instalación "
+                            "de 'transformers'."
+                        )
+                        st.stop()
+                    with st.spinner("Generando resumen con BART preentrenado ..."):
+                        summary_en = generate_summary_bart(
+                            input_for_model, summarizer,
+                            max_length=max_len,
+                            min_length=max(20, max_len // 4),
+                            num_beams=num_beams,
+                        )
+                        st.session_state["last_summary"] = (summary_en, [], [])
                 else:
-                    with st.spinner("Generando resumen con el modelo entrenado ..."):
+                    if not model_loaded:
+                        st.warning(
+                            "Está usando el backend *Modelo entrenado* en modo "
+                            "demostración (pesos aleatorios). El resumen carecerá "
+                            "de sentido. Cambie a BART en la barra lateral."
+                        )
+                    with st.spinner(
+                        "Generando resumen con el modelo Encoder-Decoder ..."
+                    ):
                         summary_en, attn_weights, src_ids = generate_summary_custom(
-                            model, vocab, article_input,
+                            model, vocab, input_for_model,
                             max_len=max_len, temperature=temperature,
                             top_k=top_k, top_p=top_p, device=device,
                         )
-                        st.session_state["last_summary"] = (summary_en, attn_weights, src_ids)
+                        st.session_state["last_summary"] = (
+                            summary_en, attn_weights, src_ids
+                        )
 
+                # Persistir el documento original (no el traducido) para el chat
                 st.session_state["last_article_text"] = article_input
 
-                # Traducción si aplica
-                if translate_to_spanish:
-                    translator = load_translator_en_es()
-                    if translator is None:
+                # ── (3) Traducción del resumen al idioma seleccionado ──
+                st.session_state["last_summary_lang"] = output_language
+                if output_language == "Español":
+                    en_es = load_translator_en_es()
+                    if en_es is None:
                         st.warning(
-                            "No fue posible cargar el traductor MarianMT EN→ES. "
-                            "Instale 'transformers' y 'sentencepiece' para habilitarlo."
+                            "No fue posible cargar el traductor MarianMT EN → ES. "
+                            "Instale 'transformers' y 'sentencepiece' para "
+                            "habilitarlo. Mostrando el resumen en inglés."
                         )
                         st.session_state["last_summary_es"] = ""
                     else:
                         with st.spinner("Traduciendo resumen al español ..."):
                             st.session_state["last_summary_es"] = translate_en_to_es(
-                                summary_en, translator
+                                summary_en, en_es
                             )
                 else:
+                    # Idioma de salida = Inglés: no se requiere traducción
                     st.session_state["last_summary_es"] = ""
 
                 st.rerun()
