@@ -1,14 +1,14 @@
-# 📰 CNN/DailyMail — Resumen Automático con Encoder-Decoder + Atención
+# CNN/DailyMail — Resumen Automático con Encoder-Decoder + Atención
 
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/apmontesp/NLP_encoder-decoder-attention_summarization/blob/main/CNN_DailyMail_EncoderDecoder_Attention.ipynb)
 [![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://apmontesp-nlp-encoder-decoder-attention-summarization.streamlit.app)
 
 > **Taller de NLP** · Arquitectura Seq2Seq con Mecanismo de Atención de Bahdanau + Embeddings GloVe  
-> Dataset: `cnn_dailymail` 3.0.0 — Hugging Face 🤗
+> Dataset: `cnn_dailymail` 3.0.0 — Hugging Face 
 
 ---
 
-## 🎯 ¿Qué problema resuelve?
+##  ¿Qué problema resuelve?
 
 El dataset **CNN/DailyMail** es el benchmark estándar para **Resumen Abstractivo de Texto**:
 dado un artículo periodístico (~800 palabras), generar un resumen abstractivo conciso (~55 palabras).
@@ -20,7 +20,7 @@ A diferencia del resumen extractivo (que copia frases del original), el resumen 
 
 ---
 
-## 🏗️ Arquitectura
+##  Arquitectura
 
 ```
 Artículo → [Encoder BiLSTM + GloVe] → Estados ocultos
@@ -42,19 +42,19 @@ Artículo → [Encoder BiLSTM + GloVe] → Estados ocultos
 
 ---
 
-## 📁 Estructura del Repositorio
+##  Estructura del Repositorio
 
 ```
-📦 NLP_encoder-decoder-attention_summarization/
-├── 📓 CNN_DailyMail_EncoderDecoder_Attention.ipynb  ← Notebook principal
-├── 🖥️ app.py                                         ← App Streamlit
-├── 📋 requirements.txt
-└── 📖 README.md
+ NLP_encoder-decoder-attention_summarization/
+├──  CNN_DailyMail_EncoderDecoder_Attention.ipynb  ← Notebook principal
+├──  app.py                                         ← App Streamlit
+├──  requirements.txt
+└──  README.md
 ```
 
 ---
 
-## 🚀 Cómo usar
+##  Cómo usar
 
 ### 1. Ejecutar el Notebook (Google Colab)
 Haz click en el badge **Open in Colab** arriba. Ejecuta todas las celdas en orden.
@@ -72,7 +72,7 @@ O despliega en [Streamlit Cloud](https://streamlit.io/cloud) apuntando a `app.py
 
 ---
 
-## 📊 Resultados Esperados
+##  Resultados Esperados
 
 | Métrica | Nuestro Modelo | Lead-3 (baseline) | BART (SOTA) |
 |---------|:--------------:|:-----------------:|:-----------:|
@@ -84,7 +84,7 @@ O despliega en [Streamlit Cloud](https://streamlit.io/cloud) apuntando a `app.py
 
 ---
 
-## 📚 Referencias
+##  Referencias
 
 1. **Bahdanau et al.** (2015) — *Neural Machine Translation by Jointly Learning to Align and Translate*
 2. **See et al.** (2017) — *Get To The Point: Summarization with Pointer-Generator Networks*
