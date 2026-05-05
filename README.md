@@ -2,7 +2,7 @@
 ## Encoder-Decoder + Atención de Bahdanau · Embeddings GloVe
 
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/apmontesp/NLP_encoder-decoder-attention_summarization/blob/main/CNN_DailyMail_EncoderDecoder_Attention.ipynb)
-[![Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://apmontesp-nlp-encoder-decoder-attention-summarization.streamlit.app)
+[![Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://nlpencoder-decoder-attentionsummarization.streamlit.app/)
 
 Taller de Procesamiento de Lenguaje Natural · Arquitectura Sequence-to-Sequence con mecanismo de atención aditiva sobre el dataset `cnn_dailymail` (Hugging Face Datasets, v3.0.0).
 
