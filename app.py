@@ -408,39 +408,68 @@ def load_custom_model():
     return model, vocab, device, loaded
 
 
+# Modelo de summarización por defecto — DistilBART pesa ~300 MB frente a los
+# ~1.6 GB de BART-large-cnn, lo que permite ejecutar la app en Streamlit Cloud
+# (1 GB de RAM en el plan gratuito) sin disparar errores de memoria.
+HF_SUMMARIZER_MODEL = "sshleifer/distilbart-cnn-12-6"
+
+
 @st.cache_resource(show_spinner=False)
 def load_hf_summarizer():
-    """Pipeline preentrenado de Hugging Face (BART-large-cnn) — opcional."""
+    """Pipeline preentrenado de Hugging Face para summarización.
+
+    Devuelve ``(pipeline, None)`` si la carga es exitosa, o ``(None, mensaje)``
+    con el detalle del error para que el usuario pueda diagnosticar.
+    """
     try:
         from transformers import pipeline
-        return pipeline("summarization", model="facebook/bart-large-cnn",
-                        device=-1, framework="pt")
-    except Exception:
-        return None
+        pipe = pipeline(
+            "summarization",
+            model=HF_SUMMARIZER_MODEL,
+            device=-1,
+            framework="pt",
+        )
+        return pipe, None
+    except Exception as exc:
+        return None, f"{type(exc).__name__}: {exc}"
 
 
 @st.cache_resource(show_spinner=False)
 def load_translator_en_es():
-    """Traductor MarianMT EN → ES. Devuelve None si transformers no está disponible."""
+    """Traductor MarianMT EN → ES.
+
+    Devuelve ``(pipeline, None)`` o ``(None, mensaje_de_error)``.
+    """
     try:
         from transformers import pipeline
-        return pipeline("translation_en_to_es",
-                        model="Helsinki-NLP/opus-mt-en-es",
-                        device=-1, framework="pt")
-    except Exception:
-        return None
+        pipe = pipeline(
+            "translation_en_to_es",
+            model="Helsinki-NLP/opus-mt-en-es",
+            device=-1,
+            framework="pt",
+        )
+        return pipe, None
+    except Exception as exc:
+        return None, f"{type(exc).__name__}: {exc}"
 
 
 @st.cache_resource(show_spinner=False)
 def load_translator_es_en():
-    """Traductor MarianMT ES → EN. Permite resumir documentos en español."""
+    """Traductor MarianMT ES → EN.
+
+    Devuelve ``(pipeline, None)`` o ``(None, mensaje_de_error)``.
+    """
     try:
         from transformers import pipeline
-        return pipeline("translation",
-                        model="Helsinki-NLP/opus-mt-es-en",
-                        device=-1, framework="pt")
-    except Exception:
-        return None
+        pipe = pipeline(
+            "translation",
+            model="Helsinki-NLP/opus-mt-es-en",
+            device=-1,
+            framework="pt",
+        )
+        return pipe, None
+    except Exception as exc:
+        return None, f"{type(exc).__name__}: {exc}"
 
 
 # Heurística simple de detección de idioma (sin dependencias externas)
@@ -1026,12 +1055,14 @@ Vocab     : {len(vocab):,}""",
                 lang = detect_language(article_input)
                 input_for_model = article_input
                 if lang == "es" and auto_translate_input:
-                    es_en = load_translator_es_en()
+                    es_en, es_en_err = load_translator_es_en()
                     if es_en is None:
                         st.warning(
                             "Se detectó español pero no fue posible cargar el "
-                            "traductor ES → EN. Instale 'transformers' y "
-                            "'sentencepiece'. Continuando con el texto original."
+                            f"traductor ES → EN. Detalle: `{es_en_err}`. "
+                            "Si el error menciona memoria, la app excede el "
+                            "límite de RAM del plan gratuito de Streamlit Cloud. "
+                            "Continuando con el texto original."
                         )
                     else:
                         with st.spinner(
@@ -1054,14 +1085,16 @@ Vocab     : {len(vocab):,}""",
 
                 # ── (2) Resumen ──
                 if backend.startswith("BART"):
-                    summarizer = load_hf_summarizer()
+                    summarizer, summ_err = load_hf_summarizer()
                     if summarizer is None:
                         st.error(
-                            "No fue posible cargar BART. Verifique la instalación "
-                            "de 'transformers'."
+                            "No fue posible cargar el modelo de summarización "
+                            f"`{HF_SUMMARIZER_MODEL}`. Detalle: `{summ_err}`."
                         )
                         st.stop()
-                    with st.spinner("Generando resumen con BART preentrenado ..."):
+                    with st.spinner(
+                        f"Generando resumen con {HF_SUMMARIZER_MODEL} ..."
+                    ):
                         summary_en = generate_summary_bart(
                             input_for_model, summarizer,
                             max_length=max_len,
@@ -1094,12 +1127,12 @@ Vocab     : {len(vocab):,}""",
                 # ── (3) Traducción del resumen al idioma seleccionado ──
                 st.session_state["last_summary_lang"] = output_language
                 if output_language == "Español":
-                    en_es = load_translator_en_es()
+                    en_es, en_es_err = load_translator_en_es()
                     if en_es is None:
                         st.warning(
-                            "No fue posible cargar el traductor MarianMT EN → ES. "
-                            "Instale 'transformers' y 'sentencepiece' para "
-                            "habilitarlo. Mostrando el resumen en inglés."
+                            "No fue posible cargar el traductor EN → ES. "
+                            f"Detalle: `{en_es_err}`. "
+                            "Mostrando el resumen en inglés."
                         )
                         st.session_state["last_summary_es"] = ""
                     else:
