@@ -562,48 +562,17 @@ def render_attention_map(article_text, summary, attn_weights):
 def main():
     model, vocab, device, model_loaded = load_custom_model()
 
-    # ── Header ──────────────────────────────────────────────────────────────
-    status_tag = (
-        f'<span class="tag green">{CHECK} Trained model loaded</span>'
-        if model_loaded
-        else '<span class="tag amber">Demo mode — random weights</span>'
-    )
-    st.markdown(
-        f"""
-    <div class="main-header">
-      <p class="main-title">NewsSum</p>
-      <p class="main-subtitle">
-        Automatic news summarization · Encoder-Decoder + Bahdanau Attention · GloVe 6B · English
-      </p>
-      <span class="tag">CNN/DailyMail v3.0.0</span>
-      <span class="tag">PyTorch</span>
-      <span class="tag green">Seq2Seq</span>
-      <span class="tag green">Additive Attention</span>
-      {status_tag}
-    </div>
-    """,
-        unsafe_allow_html=True,
-    )
-
-    if not model_loaded:
-        st.warning(
-            "**Demo mode active.** `best_model.pt` was not found — the model is running with "
-            "random weights and a reduced vocabulary. Summaries will be meaningless. "
-            "To get real results: (1) run the notebook to completion and copy "
-            "`best_model.pt` and `vocab.pkl` next to `app.py`, or (2) switch the "
-            "backend in the sidebar to **BART (Hugging Face)**."
-        )
-
-    # ── Sidebar ─────────────────────────────────────────────────────────────
+    # ── Sidebar (defined first so `backend` is available for the warning) ────
     with st.sidebar:
         st.markdown("## Parameter Lab")
 
         st.markdown("### Inference backend")
         backend = st.radio(
             "Backend",
-            options=["Trained model (Encoder-Decoder + Attention)",
-                     "BART pretrained (Hugging Face)"],
-            help="The trained model replicates the workshop architecture. BART is included as a reference.",
+            options=["BART pretrained (Hugging Face)",
+                     "Trained model (Encoder-Decoder + Attention)"],
+            help="BART is a pretrained reference model that works out of the box. "
+                 "The trained model requires best_model.pt next to app.py.",
         )
 
         st.markdown("### Decoding")
@@ -641,6 +610,42 @@ Vocab     : {len(vocab):,}""",
 - Zhang et al. (2020) — PEGASUS.
 - Lin (2004) — ROUGE.
 """
+        )
+
+    # ── Header (after sidebar so `backend` is defined) ──────────────────────
+    using_bart = backend.startswith("BART")
+    status_tag = (
+        f'<span class="tag green">{CHECK} BART pretrained (Hugging Face)</span>'
+        if using_bart
+        else (
+            f'<span class="tag green">{CHECK} Trained model loaded</span>'
+            if model_loaded
+            else '<span class="tag amber">Demo mode — random weights</span>'
+        )
+    )
+    st.markdown(
+        f"""
+    <div class="main-header">
+      <p class="main-title">NewsSum</p>
+      <p class="main-subtitle">
+        Automatic news summarization · Encoder-Decoder + Bahdanau Attention · GloVe 6B · English
+      </p>
+      <span class="tag">CNN/DailyMail v3.0.0</span>
+      <span class="tag">PyTorch</span>
+      <span class="tag green">Seq2Seq</span>
+      <span class="tag green">Additive Attention</span>
+      {status_tag}
+    </div>
+    """,
+        unsafe_allow_html=True,
+    )
+
+    # Show warning only when using the custom model backend without trained weights
+    if not using_bart and not model_loaded:
+        st.warning(
+            "**Demo mode active.** `best_model.pt` was not found — the custom model is running "
+            "with random weights. Switch the backend to **BART pretrained (Hugging Face)** "
+            "in the sidebar for meaningful summaries."
         )
 
     # ── Tabs ────────────────────────────────────────────────────────────────
