@@ -1,15 +1,14 @@
 """
-NewsSum — Aplicación Streamlit
-Resumen automático de noticias y documentos con Encoder-Decoder + Atención de Bahdanau.
+NewsSum — Streamlit App
+Abstractive summarization of news articles with Encoder-Decoder + Bahdanau Attention.
 
-Funcionalidades:
-    1. Resumen abstractivo a partir de texto pegado, archivos PDF o archivos EPUB.
-    2. Traducción opcional del resumen del inglés al español (MarianMT).
-    3. Chat interactivo con historial persistente sobre el documento cargado.
-    4. Panel de métricas con comparación frente a la literatura.
-    5. Laboratorio para ajustar parámetros de inferencia y replicar experimentos.
+Features:
+    1. Abstractive summarization from pasted text, PDF, or TXT files.
+    2. Interactive chat with persistent history over the loaded document.
+    3. Metrics panel with literature comparison.
+    4. Lab for adjusting inference parameters.
 
-Tono académico profesional. Solo se utiliza el carácter de validación U+2713.
+Model operates in English only.
 """
 
 import io
@@ -32,14 +31,14 @@ import matplotlib.pyplot as plt
 
 from rouge_score import rouge_scorer
 
-CHECK = "✓"  # ✓
+CHECK = "✓"
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# Configuración general de la página
+# Page config
 # ════════════════════════════════════════════════════════════════════════════
 st.set_page_config(
-    page_title="NewsSum | Encoder-Decoder + Atención",
+    page_title="NewsSum | Encoder-Decoder + Attention",
     page_icon=None,
     layout="wide",
     initial_sidebar_state="expanded",
@@ -65,29 +64,16 @@ code, pre, .stCode { font-family: 'JetBrains Mono', monospace; }
     margin-bottom: 1.5rem;
     border: 1px solid #334155;
 }
-.main-title {
-    font-size: 1.9rem;
-    font-weight: 700;
-    color: #f1f5f9;
-    margin: 0;
-    letter-spacing: -0.4px;
-}
-.main-subtitle {
-    color: #94a3b8;
-    font-size: 0.92rem;
-    margin-top: 0.4rem;
-}
+.main-title { font-size: 1.9rem; font-weight: 700; color: #f1f5f9; margin: 0; letter-spacing: -0.4px; }
+.main-subtitle { color: #94a3b8; font-size: 0.92rem; margin-top: 0.4rem; }
 .tag {
     display: inline-block;
     background: rgba(99,102,241,0.18);
     color: #a5b4fc;
     border: 1px solid rgba(99,102,241,0.4);
-    padding: 2px 10px;
-    border-radius: 14px;
-    font-size: 0.72rem;
-    font-weight: 600;
-    margin-right: 6px;
-    margin-top: 8px;
+    padding: 2px 10px; border-radius: 14px;
+    font-size: 0.72rem; font-weight: 600;
+    margin-right: 6px; margin-top: 8px;
 }
 .tag.green  { background: rgba(16,185,129,0.15); color: #6ee7b7; border-color: rgba(16,185,129,0.35); }
 .tag.amber  { background: rgba(245,158,11,0.15); color: #fcd34d; border-color: rgba(245,158,11,0.35); }
@@ -102,50 +88,27 @@ code, pre, .stCode { font-family: 'JetBrains Mono', monospace; }
 }
 .summary-text { color: #e2e8f0; font-size: 1.02rem; line-height: 1.65; }
 .summary-label {
-    color: #818cf8;
-    font-size: 0.72rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.12em;
-    margin-bottom: 8px;
+    color: #818cf8; font-size: 0.72rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.12em; margin-bottom: 8px;
 }
 
 .section-title {
-    font-size: 1.15rem;
-    font-weight: 600;
-    color: #f1f5f9;
-    margin-bottom: 0.9rem;
-    padding-bottom: 0.4rem;
+    font-size: 1.15rem; font-weight: 600; color: #f1f5f9;
+    margin-bottom: 0.9rem; padding-bottom: 0.4rem;
     border-bottom: 2px solid #334155;
 }
 
 .rouge-badge {
     display: inline-block;
-    background: rgba(99,102,241,0.15);
-    color: #a5b4fc;
+    background: rgba(99,102,241,0.15); color: #a5b4fc;
     border: 1px solid rgba(99,102,241,0.3);
-    padding: 4px 12px;
-    border-radius: 8px;
-    font-weight: 600;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 1.05rem;
+    padding: 4px 12px; border-radius: 8px;
+    font-weight: 600; font-family: 'JetBrains Mono', monospace; font-size: 1.05rem;
 }
 
 .lit-table { width: 100%; border-collapse: collapse; }
-.lit-table th {
-    background: #1e293b;
-    color: #94a3b8;
-    font-size: 0.78rem;
-    text-transform: uppercase;
-    padding: 10px 14px;
-    text-align: left;
-}
-.lit-table td {
-    padding: 9px 14px;
-    border-bottom: 1px solid #1e293b;
-    color: #e2e8f0;
-    font-size: 0.88rem;
-}
+.lit-table th { background: #1e293b; color: #94a3b8; font-size: 0.78rem; text-transform: uppercase; padding: 10px 14px; text-align: left; }
+.lit-table td { padding: 9px 14px; border-bottom: 1px solid #1e293b; color: #e2e8f0; font-size: 0.88rem; }
 .lit-table tr:hover td { background: #1e293b33; }
 .lit-table .highlight td { color: #a5b4fc; font-weight: 600; }
 </style>
@@ -155,7 +118,7 @@ code, pre, .stCode { font-family: 'JetBrains Mono', monospace; }
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# Utilidades de tokenización y vocabulario
+# Tokenization and vocabulary
 # ════════════════════════════════════════════════════════════════════════════
 def simple_tokenize(text: str):
     text = text.lower()
@@ -164,7 +127,7 @@ def simple_tokenize(text: str):
 
 
 class Vocabulary:
-    """Vocabulario word-level con tokens especiales."""
+    """Word-level vocabulary with special tokens."""
 
     def __init__(self):
         self.word2idx = {}
@@ -202,7 +165,7 @@ class Vocabulary:
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# Arquitectura: Encoder + Atención + Decoder + Seq2Seq
+# Architecture: Encoder + Attention + Decoder + Seq2Seq
 # ════════════════════════════════════════════════════════════════════════════
 class BahdanauAttention(nn.Module):
     def __init__(self, enc_hidden_dim, dec_hidden_dim, attn_dim=None):
@@ -243,9 +206,7 @@ class Encoder(nn.Module):
 
     def forward(self, src, src_lens):
         embedded = self.dropout(self.embedding(src))
-        packed = pack_padded_sequence(
-            embedded, src_lens.cpu(), batch_first=True, enforce_sorted=False
-        )
+        packed = pack_padded_sequence(embedded, src_lens.cpu(), batch_first=True, enforce_sorted=False)
         outputs, (hidden, cell) = self.rnn(packed)
         outputs, _ = pad_packed_sequence(outputs, batch_first=True)
         hidden = self._combine(hidden)
@@ -304,12 +265,35 @@ class Seq2Seq(nn.Module):
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# Generación de resúmenes (modelo custom)
+# Summary generation
 # ════════════════════════════════════════════════════════════════════════════
+def clean_summary(text: str) -> str:
+    """Remove degenerate repetition common in undertrained seq2seq models."""
+    if not text or not text.strip():
+        return "(empty summary — model may need more training epochs)"
+    tokens = text.split()
+    cleaned, prev, repeat_count = [], None, 0
+    for tok in tokens:
+        if tok == prev:
+            repeat_count += 1
+            if repeat_count >= 3:
+                break
+        else:
+            repeat_count = 1
+        cleaned.append(tok)
+        prev = tok
+    result = " ".join(cleaned).strip()
+    words_only = [t for t in cleaned if t.isalpha()]
+    if len(words_only) < 3:
+        return (result + "\n\n⚠️ Low-quality output: model needs more training. "
+                "Set FAST_MODE = False in the notebook and retrain for meaningful summaries.")
+    return result
+
+
 def generate_summary_custom(model, vocab, article_text, max_len=100,
                             temperature=1.0, top_k=0, top_p=0.0,
                             device=torch.device("cpu")):
-    """Decodificación greedy / top-k / top-p sobre el modelo Encoder-Decoder."""
+    """Greedy / top-k / top-p decoding over the Encoder-Decoder model."""
     model.eval()
     with torch.no_grad():
         src_ids = vocab.encode(article_text, max_len=400)
@@ -331,12 +315,10 @@ def generate_summary_custom(model, vocab, article_text, max_len=100,
             )
             logits = pred / max(temperature, 1e-6)
 
-            # top-k filtering
             if top_k > 0:
                 v, _ = torch.topk(logits, min(top_k, logits.size(-1)))
                 logits[logits < v[:, [-1]]] = float("-inf")
 
-            # top-p (nucleus) filtering
             if 0.0 < top_p < 1.0:
                 sorted_logits, sorted_idx = torch.sort(logits, descending=True)
                 cum_probs = torch.cumsum(F.softmax(sorted_logits, dim=-1), dim=-1)
@@ -362,11 +344,11 @@ def generate_summary_custom(model, vocab, article_text, max_len=100,
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# Carga del modelo entrenado (con fallback de demostración)
+# Model loading
 # ════════════════════════════════════════════════════════════════════════════
 @st.cache_resource(show_spinner=False)
 def load_custom_model():
-    """Carga el modelo Encoder-Decoder entrenado o crea una versión de demostración."""
+    """Load the trained Encoder-Decoder model, or create a demo version."""
     device = torch.device("cpu")
     EMBED_DIM, HIDDEN_DIM, N_LAYERS, DROPOUT = 100, 256, 2, 0.3
 
@@ -408,117 +390,29 @@ def load_custom_model():
     return model, vocab, device, loaded
 
 
-# Modelo de summarización por defecto — DistilBART pesa ~300 MB frente a los
-# ~1.6 GB de BART-large-cnn, lo que permite ejecutar la app en Streamlit Cloud
-# (1 GB de RAM en el plan gratuito) sin disparar errores de memoria.
 HF_SUMMARIZER_MODEL = "sshleifer/distilbart-cnn-12-6"
+
+
+def _load_seq2seq(model_name):
+    from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
+    tok = AutoTokenizer.from_pretrained(model_name)
+    mdl = AutoModelForSeq2SeqLM.from_pretrained(model_name)
+    mdl.eval()
+    return tok, mdl
 
 
 @st.cache_resource(show_spinner=False)
 def load_hf_summarizer():
-    """Pipeline preentrenado de Hugging Face para summarización.
-
-    Devuelve ``(pipeline, None)`` si la carga es exitosa, o ``(None, mensaje)``
-    con el detalle del error para que el usuario pueda diagnosticar.
-    """
     try:
-        from transformers import pipeline
-        pipe = pipeline(
-            "summarization",
-            model=HF_SUMMARIZER_MODEL,
-            device=-1,
-            framework="pt",
-        )
-        return pipe, None
+        return _load_seq2seq(HF_SUMMARIZER_MODEL), None
     except Exception as exc:
         return None, f"{type(exc).__name__}: {exc}"
-
-
-@st.cache_resource(show_spinner=False)
-def load_translator_en_es():
-    """Traductor MarianMT EN → ES.
-
-    Devuelve ``(pipeline, None)`` o ``(None, mensaje_de_error)``.
-    """
-    try:
-        from transformers import pipeline
-        pipe = pipeline(
-            "translation_en_to_es",
-            model="Helsinki-NLP/opus-mt-en-es",
-            device=-1,
-            framework="pt",
-        )
-        return pipe, None
-    except Exception as exc:
-        return None, f"{type(exc).__name__}: {exc}"
-
-
-@st.cache_resource(show_spinner=False)
-def load_translator_es_en():
-    """Traductor MarianMT ES → EN.
-
-    Devuelve ``(pipeline, None)`` o ``(None, mensaje_de_error)``.
-    """
-    try:
-        from transformers import pipeline
-        pipe = pipeline(
-            "translation",
-            model="Helsinki-NLP/opus-mt-es-en",
-            device=-1,
-            framework="pt",
-        )
-        return pipe, None
-    except Exception as exc:
-        return None, f"{type(exc).__name__}: {exc}"
-
-
-# Heurística simple de detección de idioma (sin dependencias externas)
-_SPANISH_HINTS = {
-    "que", "para", "como", "pero", "más", "mas", "donde", "cuando",
-    "porque", "esta", "está", "estaba", "fue", "fueron", "uno", "una",
-    "del", "los", "las", "señor", "señora", "años", "día", "noche",
-    "casa", "tiempo", "hombre", "mujer", "muy", "también", "sólo", "solo",
-    "sino", "sin", "según", "según", "después", "antes", "entonces",
-}
-_ENGLISH_HINTS = {
-    "the", "and", "of", "to", "in", "is", "was", "were", "are", "for",
-    "with", "that", "this", "from", "have", "has", "had", "their", "they",
-    "would", "could", "should", "where", "when", "while", "after", "before",
-    "according", "between", "through", "however", "because",
-}
-
-
-def detect_language(text: str) -> str:
-    """Devuelve 'es', 'en' o 'unknown' usando una heurística léxica.
-
-    Cuenta palabras función características de cada idioma sobre la primera
-    porción del documento. Suficiente para distinguir español de inglés;
-    no pretende ser robusto frente a otros idiomas.
-    """
-    sample = text[:4000].lower()
-    # Tokenización simple manteniendo letras Unicode
-    import re as _re
-    tokens = _re.findall(r"[a-záéíóúñü]+", sample, flags=_re.IGNORECASE)
-    if len(tokens) < 5:
-        return "unknown"
-    es_hits = sum(1 for t in tokens if t in _SPANISH_HINTS)
-    en_hits = sum(1 for t in tokens if t in _ENGLISH_HINTS)
-    # Pista adicional: presencia de caracteres exclusivos del español
-    has_spanish_chars = bool(_re.search(r"[áéíóúñ¡¿]", sample))
-    if has_spanish_chars and es_hits >= en_hits:
-        return "es"
-    if es_hits > en_hits * 1.2:
-        return "es"
-    if en_hits > es_hits * 1.2:
-        return "en"
-    return "unknown"
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# Extracción de texto desde archivos PDF y EPUB
+# File extraction — PDF and TXT only
 # ════════════════════════════════════════════════════════════════════════════
 def extract_text_from_pdf(file_bytes: bytes) -> str:
-    """Extrae texto plano de un PDF utilizando pypdf."""
     try:
         from pypdf import PdfReader
     except ImportError:
@@ -533,188 +427,106 @@ def extract_text_from_pdf(file_bytes: bytes) -> str:
     return "\n".join(chunks).strip()
 
 
-def extract_text_from_epub(file_bytes: bytes) -> str:
-    """Extrae texto plano de un EPUB usando ebooklib + BeautifulSoup."""
-    try:
-        from ebooklib import epub, ITEM_DOCUMENT
-        from bs4 import BeautifulSoup
-    except ImportError as exc:
-        raise RuntimeError(
-            "Para procesar EPUB se requieren los paquetes 'ebooklib' y 'beautifulsoup4'."
-        ) from exc
-
-    # ebooklib lee desde un path. Persistimos temporalmente.
-    import tempfile
-    with tempfile.NamedTemporaryFile(suffix=".epub", delete=False) as tmp:
-        tmp.write(file_bytes)
-        tmp_path = tmp.name
-    try:
-        book = epub.read_epub(tmp_path)
-        chunks = []
-        for item in book.get_items_of_type(ITEM_DOCUMENT):
-            soup = BeautifulSoup(item.get_content(), "html.parser")
-            chunks.append(soup.get_text(separator=" ", strip=True))
-    finally:
-        try:
-            os.remove(tmp_path)
-        except OSError:
-            pass
-    return "\n".join(chunks).strip()
-
-
 def extract_uploaded_text(uploaded_file) -> str:
-    """Despacha la extracción según la extensión del archivo subido.
-
-    Importante: se utiliza ``getvalue()`` (en lugar de ``read()``) para evitar
-    que el cursor del UploadedFile quede al final tras la primera lectura y que
-    los reruns posteriores de Streamlit obtengan bytes vacíos.
-    """
     if uploaded_file is None:
         return ""
     name = uploaded_file.name.lower()
-    if hasattr(uploaded_file, "getvalue"):
-        data = uploaded_file.getvalue()
-    else:
-        try:
-            uploaded_file.seek(0)
-        except Exception:
-            pass
-        data = uploaded_file.read()
+    data = uploaded_file.getvalue() if hasattr(uploaded_file, "getvalue") else uploaded_file.read()
     if name.endswith(".pdf"):
         return extract_text_from_pdf(data)
-    if name.endswith(".epub"):
-        return extract_text_from_epub(data)
     if name.endswith(".txt"):
-        # Detección de codificación tolerante (UTF-8, latin-1)
         for enc in ("utf-8", "utf-8-sig", "latin-1", "cp1252"):
             try:
                 return data.decode(enc)
             except UnicodeDecodeError:
                 continue
         return data.decode("utf-8", errors="replace")
-    raise ValueError(f"Formato no soportado: {name}")
+    raise ValueError(f"Unsupported format: {name}. Use .pdf or .txt")
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# Traducción inglés → español por trozos
-# ════════════════════════════════════════════════════════════════════════════
-def _translate_in_chunks(text: str, translator, max_chars: int = 350) -> str:
-    """Traduce texto largo dividiéndolo por oraciones para no exceder el
-    límite de 512 tokens de los modelos MarianMT."""
-    if translator is None or not text.strip():
-        return ""
-    sentences = re.split(r"(?<=[\.\!\?])\s+", text.strip())
-    out = []
-    buffer = ""
-    for s in sentences:
-        if len(buffer) + len(s) < max_chars:
-            buffer = (buffer + " " + s).strip()
-        else:
-            if buffer:
-                out.append(translator(buffer)[0]["translation_text"])
-            buffer = s
-    if buffer:
-        out.append(translator(buffer)[0]["translation_text"])
-    return " ".join(out)
-
-
-def translate_en_to_es(text: str, translator) -> str:
-    """Traduce un texto del inglés al español por trozos."""
-    return _translate_in_chunks(text, translator)
-
-
-def translate_es_to_en(text: str, translator) -> str:
-    """Traduce un texto del español al inglés por trozos.
-
-    Para entradas muy largas (libros enteros, p. ej. *Cien años de soledad*)
-    el modelo MarianMT puede tardar minutos. Se acota la entrada a los
-    primeros 12 000 caracteres para mantener la app responsiva.
-    """
-    return _translate_in_chunks(text[:12000], translator)
-
-
-# ════════════════════════════════════════════════════════════════════════════
-# Generación con BART (HF) — opcional
+# BART generation
 # ════════════════════════════════════════════════════════════════════════════
 def generate_summary_bart(text: str, summarizer, max_length=130, min_length=30,
                           num_beams=4) -> str:
-    """Resumen con BART-large-cnn. Trunca a 1024 tokens (límite del modelo)."""
-    if summarizer is None:
+    if summarizer is None or not text.strip():
         return ""
-    text = text[:6000]  # truncado por seguridad
-    out = summarizer(text, max_length=max_length, min_length=min_length,
-                     num_beams=num_beams, truncation=True)
-    return out[0]["summary_text"]
+    tokenizer, model = summarizer
+    text = text[:6000]
+    inputs = tokenizer(text, return_tensors="pt", truncation=True, max_length=1024)
+    with torch.no_grad():
+        summary_ids = model.generate(
+            **inputs,
+            max_length=max_length,
+            min_length=min_length,
+            num_beams=num_beams,
+            early_stopping=True,
+            no_repeat_ngram_size=3,
+        )
+    return tokenizer.decode(summary_ids[0], skip_special_tokens=True)
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# Respuestas del chat
+# Chat responses (English)
 # ════════════════════════════════════════════════════════════════════════════
 def generate_chat_response(question: str, article: str, summary: str) -> str:
-    """Respuesta basada en reglas y extracción heurística sobre el artículo."""
     q = question.lower().strip()
 
-    if any(w in q for w in ["de qué", "de que", "trata", "tema", "about"]):
-        return (f"El documento se sintetiza así: <i>{summary}</i>"
-                if summary else "Aún no hay un resumen disponible. Genera uno primero.")
+    if any(w in q for w in ["about", "topic", "what is", "what does", "summary"]):
+        return (f"The document summarizes as: <i>{summary}</i>"
+                if summary else "No summary available yet. Generate one first.")
 
-    if any(w in q for w in ["quién", "quien", "personas", "entidad", "mencion"]):
+    if any(w in q for w in ["who", "people", "entity", "entities", "mention"]):
         if not article:
-            return "No hay un artículo cargado."
+            return "No article loaded."
         caps = [w for w in article.split() if w[:1].isupper() and len(w) > 2 and w.isalpha()]
         unique = list(dict.fromkeys(caps))[:10]
-        return ("Entidades / nombres detectados: <b>" + ", ".join(unique) + "</b>"
-                if unique else "No se identificaron entidades claras.")
+        return ("Entities / names detected: <b>" + ", ".join(unique) + "</b>"
+                if unique else "No clear entities identified.")
 
-    if any(w in q for w in ["atencion", "atención", "attention", "como funciona", "cómo funciona"]):
+    if any(w in q for w in ["attention", "how does", "mechanism", "architecture"]):
         return (
-            "<b>Mecanismo de Atención de Bahdanau:</b><br>"
-            "En cada paso del decoder se computa un score de alineación "
-            "<code>e(t,i) = v · tanh(W_enc h_i + W_dec s_t)</code>, "
-            "se aplica softmax para obtener pesos <code>α</code> y se calcula el "
-            "vector de contexto como suma ponderada de los estados del encoder. "
-            "Esto permite enfocar regiones relevantes del documento al generar "
-            "cada token del resumen."
+            "<b>Bahdanau Attention Mechanism:</b><br>"
+            "At each decoder step, an alignment score is computed: "
+            "<code>e(t,i) = v · tanh(W_enc h_i + W_dec s_t)</code>. "
+            "Softmax converts these into attention weights <code>α</code>, "
+            "and the context vector is computed as a weighted sum of encoder states. "
+            "This lets the model focus on relevant parts of the input when generating each token."
         )
 
-    if any(w in q for w in ["rouge", "métrica", "metrica", "evaluacion", "evaluación"]):
+    if any(w in q for w in ["rouge", "metric", "score", "evaluation"]):
         return (
-            "<b>ROUGE</b> mide solapamiento de n-gramas y subsecuencias entre el "
-            "resumen generado y el de referencia. Se reportan ROUGE-1 (unigramas), "
-            "ROUGE-2 (bigramas) y ROUGE-L (subsecuencia común más larga). "
-            "En CNN/DailyMail, valores superiores a 0.35 en ROUGE-1 son aceptables "
-            "para arquitecturas Encoder-Decoder clásicas."
+            "<b>ROUGE</b> measures n-gram overlap between the generated and reference summary. "
+            "ROUGE-1 (unigrams), ROUGE-2 (bigrams), ROUGE-L (longest common subsequence). "
+            "On CNN/DailyMail, ROUGE-1 > 0.35 is acceptable for classic Encoder-Decoder models."
         )
 
-    if any(w in q for w in ["temperatura", "temperature"]):
+    if any(w in q for w in ["temperature"]):
         return (
-            "La <b>temperatura</b> escala los logits antes del softmax: "
-            "T &lt; 1 produce salidas más determinísticas, T &gt; 1 introduce más "
-            "diversidad. Para resúmenes informativos se recomienda T ∈ [0.7, 1.0]."
+            "<b>Temperature</b> scales logits before softmax: "
+            "T &lt; 1 gives more deterministic output, T &gt; 1 adds diversity. "
+            "For news summarization, T ∈ [0.7, 1.0] is recommended."
         )
 
-    if any(w in q for w in ["hola", "buenas", "buenos", "hello", "hi"]):
+    if any(w in q for w in ["hello", "hi", "hey"]):
         return (
-            "Hola. Soy NewsSum. Carga un artículo o documento, genera el resumen "
-            "y luego puedes preguntarme por su contenido, las métricas o la "
-            "arquitectura del modelo."
+            "Hello! I'm NewsSum. Load an article or document, generate a summary, "
+            "then ask me about its content, ROUGE metrics, or the model architecture."
         )
 
-    # Búsqueda heurística en el artículo
     if article:
         sentences = re.split(r"(?<=[\.\!\?])\s+", article)
         keywords = [w for w in q.split() if len(w) > 3]
-        relevant = [s for s in sentences
-                    if any(k in s.lower() for k in keywords)]
+        relevant = [s for s in sentences if any(k in s.lower() for k in keywords)]
         if relevant:
-            return ("Pasaje relevante en el documento: "
-                    f"<i>«{relevant[0][:280].strip()}…»</i>")
-    return (f"Pregunta registrada: <i>{question}</i>. Puedo ayudarte con resúmenes, "
-            "entidades del documento, métricas ROUGE o la arquitectura del modelo.")
+            return f"Relevant passage: <i>«{relevant[0][:280].strip()}…»</i>"
+
+    return (f"Question logged: <i>{question}</i>. "
+            "I can help with summaries, document entities, ROUGE metrics, or the model architecture.")
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# Render del mapa de atención
+# Attention map
 # ════════════════════════════════════════════════════════════════════════════
 def render_attention_map(article_text, summary, attn_weights):
     src_tokens = simple_tokenize(article_text)[:50]
@@ -731,11 +543,10 @@ def render_attention_map(article_text, summary, attn_weights):
     im = ax.imshow(attn_matrix, cmap="Blues", aspect="auto", vmin=0)
     ax.set_xticks(range(n_src))
     ax.set_yticks(range(n_trg))
-    ax.set_xticklabels(src_tokens[:n_src], rotation=45, ha="right",
-                       fontsize=8, color="#94a3b8")
+    ax.set_xticklabels(src_tokens[:n_src], rotation=45, ha="right", fontsize=8, color="#94a3b8")
     ax.set_yticklabels(trg_tokens[:n_trg], fontsize=9, color="#e2e8f0")
-    ax.set_xlabel("Documento (tokens fuente)", color="#94a3b8")
-    ax.set_ylabel("Resumen (tokens objetivo)", color="#94a3b8")
+    ax.set_xlabel("Article (source tokens)", color="#94a3b8")
+    ax.set_ylabel("Summary (target tokens)", color="#94a3b8")
     ax.tick_params(colors="#64748b")
     for spine in ax.spines.values():
         spine.set_edgecolor("#334155")
@@ -746,107 +557,85 @@ def render_attention_map(article_text, summary, attn_weights):
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# Aplicación principal
+# Main app
 # ════════════════════════════════════════════════════════════════════════════
 def main():
     model, vocab, device, model_loaded = load_custom_model()
 
-    # ── Encabezado ──────────────────────────────────────────────────────────
+    # ── Header ──────────────────────────────────────────────────────────────
     status_tag = (
-        f'<span class="tag green">{CHECK} Modelo entrenado cargado</span>'
+        f'<span class="tag green">{CHECK} Trained model loaded</span>'
         if model_loaded
-        else '<span class="tag amber">Modo demostración — pesos aleatorios</span>'
+        else '<span class="tag amber">Demo mode — random weights</span>'
     )
     st.markdown(
         f"""
     <div class="main-header">
       <p class="main-title">NewsSum</p>
       <p class="main-subtitle">
-        Resumen automático de noticias y documentos · Encoder-Decoder + Atención de Bahdanau · GloVe 6B
+        Automatic news summarization · Encoder-Decoder + Bahdanau Attention · GloVe 6B · English
       </p>
       <span class="tag">CNN/DailyMail v3.0.0</span>
       <span class="tag">PyTorch</span>
       <span class="tag green">Seq2Seq</span>
-      <span class="tag green">Atención aditiva</span>
+      <span class="tag green">Additive Attention</span>
       {status_tag}
     </div>
     """,
         unsafe_allow_html=True,
     )
 
-    # Aviso prominente cuando no hay checkpoint entrenado
     if not model_loaded:
         st.warning(
-            "**Modo demostración activo.** El archivo `best_model.pt` no se "
-            "encontró en el directorio, así que el backend *Modelo entrenado* "
-            "está operando con pesos aleatorios y un vocabulario reducido — los "
-            "resúmenes serán secuencias de palabras sin sentido. Para obtener "
-            "resultados reales: (1) ejecute el notebook hasta el final y copie "
-            "`best_model.pt` y `vocab.pkl` junto a `app.py`, o (2) cambie el "
-            "backend en la barra lateral a **BART preentrenado (Hugging Face)**."
+            "**Demo mode active.** `best_model.pt` was not found — the model is running with "
+            "random weights and a reduced vocabulary. Summaries will be meaningless. "
+            "To get real results: (1) run the notebook to completion and copy "
+            "`best_model.pt` and `vocab.pkl` next to `app.py`, or (2) switch the "
+            "backend in the sidebar to **BART (Hugging Face)**."
         )
 
     # ── Sidebar ─────────────────────────────────────────────────────────────
     with st.sidebar:
-        st.markdown("## Laboratorio de parámetros")
+        st.markdown("## Parameter Lab")
 
-        st.markdown("### Modelo de inferencia")
+        st.markdown("### Inference backend")
         backend = st.radio(
             "Backend",
-            options=["Modelo entrenado (Encoder-Decoder + Atención)",
-                     "BART preentrenado (Hugging Face)"],
-            help=("El modelo entrenado replica la arquitectura del taller. "
-                  "BART preentrenado se incluye como referencia comparativa."),
+            options=["Trained model (Encoder-Decoder + Attention)",
+                     "BART pretrained (Hugging Face)"],
+            help="The trained model replicates the workshop architecture. BART is included as a reference.",
         )
 
-        st.markdown("### Decodificación")
-        temperature = st.slider("Temperatura", 0.05, 2.0, 1.0, 0.05,
-                                help="Escala los logits antes del softmax.")
+        st.markdown("### Decoding")
+        temperature = st.slider("Temperature", 0.05, 2.0, 1.0, 0.05,
+                                help="Scales logits before softmax.")
         top_k = st.slider("top-k", 0, 200, 0, 5,
-                          help="Filtra a los k tokens más probables. 0 = desactivado.")
+                          help="Filter to top-k tokens. 0 = disabled.")
         top_p = st.slider("top-p (nucleus)", 0.0, 1.0, 0.0, 0.05,
-                          help="Filtra a la masa de probabilidad acumulada p. 0 = desactivado.")
-        max_len = st.slider("Longitud máxima del resumen (tokens)", 30, 200, 80, 5)
-        num_beams = st.slider("Beams (sólo BART)", 1, 8, 4, 1)
+                          help="Filter to cumulative probability mass p. 0 = disabled.")
+        max_len = st.slider("Max summary length (tokens)", 30, 200, 80, 5)
+        num_beams = st.slider("Beams (BART only)", 1, 8, 4, 1)
 
-        st.markdown("### Idioma")
-        output_language = st.radio(
-            "Idioma del resumen",
-            options=["Español", "Inglés"],
-            index=0,
-            horizontal=True,
-            help=("Idioma en el que se mostrará el resumen final. El modelo "
-                  "opera internamente en inglés; si elige español el resumen "
-                  "se traduce con Helsinki-NLP/opus-mt-en-es."),
-        )
-        auto_translate_input = st.checkbox(
-            "Traducir entrada automáticamente al inglés si está en español",
-            value=True,
-            help=("El modelo se entrena con CNN/DailyMail en inglés. Esta opción "
-                  "detecta el idioma del documento y, si es español, lo traduce "
-                  "al inglés antes de resumir. Utiliza Helsinki-NLP/opus-mt-es-en."),
-        )
-
-        st.markdown("### Visualización")
-        show_attention = st.checkbox("Mostrar mapa de atención (modelo entrenado)", True)
-        show_rouge = st.checkbox("Calcular ROUGE contra el documento original", True)
+        st.markdown("### Visualization")
+        show_attention = st.checkbox("Show attention map (trained model)", True)
+        show_rouge = st.checkbox("Compute ROUGE vs. original document", True)
 
         st.markdown("---")
-        st.markdown("### Configuración del modelo")
+        st.markdown("### Model configuration")
         st.code(
-            f"""Encoder   : BiLSTM (2 capas)
-Decoder   : LSTM   (2 capas)
-Atención  : Bahdanau aditiva
+            f"""Encoder   : BiLSTM (2 layers)
+Decoder   : LSTM   (2 layers)
+Attention : Bahdanau additive
 Embedding : GloVe 6B 100d
 Hidden    : 256
 Vocab     : {len(vocab):,}""",
             language="text",
         )
 
-        st.markdown("### Literatura recomendada")
+        st.markdown("### Recommended reading")
         st.markdown(
             """
-- Bahdanau et al. (2015) — Atención aditiva.
+- Bahdanau et al. (2015) — Additive attention.
 - See et al. (2017) — Pointer-Generator + Coverage.
 - Lewis et al. (2020) — BART.
 - Zhang et al. (2020) — PEGASUS.
@@ -854,25 +643,22 @@ Vocab     : {len(vocab):,}""",
 """
         )
 
-    # ── Pestañas ────────────────────────────────────────────────────────────
+    # ── Tabs ────────────────────────────────────────────────────────────────
     tab1, tab2, tab3, tab4 = st.tabs(
-        ["Resumidor", "Chat interactivo", "Métricas", "Laboratorio"]
+        ["Summarizer", "Chat", "Metrics", "Lab"]
     )
 
     # ════════════════════════════════════════════════════════════════════════
-    # TAB 1 — Resumidor
+    # TAB 1 — Summarizer
     # ════════════════════════════════════════════════════════════════════════
     with tab1:
-        st.markdown('<div class="section-title">Generador de resúmenes</div>',
-                    unsafe_allow_html=True)
+        st.markdown('<div class="section-title">Summary Generator</div>', unsafe_allow_html=True)
 
         col1, col2 = st.columns([3, 2])
 
         with col1:
-            # ── Ejemplos predefinidos (deben evaluarse antes del text_area
-            # para poder escribir en st.session_state["article_input"]) ──
             example_articles = {
-                "Política": (
+                "Politics": (
                     "The president announced a sweeping new climate policy that would "
                     "require all federal buildings to be powered by renewable energy by "
                     "2030. The executive order signed on Thursday also establishes a new "
@@ -881,143 +667,89 @@ Vocab     : {len(vocab):,}""",
                     "could increase utility costs, while environmental groups praised it "
                     "as an important step toward reducing carbon emissions."
                 ),
-                "Economía": (
+                "Economy": (
                     "Global stock markets tumbled on Monday as investors reacted to new "
                     "inflation data showing prices rose faster than expected last month. "
                     "The consumer price index climbed 8.5 percent year over year, "
                     "surpassing economist forecasts and renewing fears that the Federal "
                     "Reserve may need to raise interest rates more aggressively."
                 ),
-                "Ciencia": (
+                "Science": (
                     "Scientists announced a breakthrough in fusion energy research after "
                     "achieving a net energy gain for the second time at the National "
                     "Ignition Facility in California. The experiment produced 3.15 "
                     "megajoules of energy from a 2.05 megajoule laser input, marking a "
-                    "significant milestone in the decades-long quest for clean limitless "
-                    "power."
+                    "significant milestone in the decades-long quest for clean limitless power."
                 ),
             }
 
-            # ── Cargue de archivos (PDF / EPUB / TXT) ──
             uploaded_file = st.file_uploader(
-                "Cargar documento (PDF, EPUB o TXT en inglés)",
-                type=["pdf", "epub", "txt"],
-                help=("El texto se procesará en inglés. Si activa la traducción, "
-                      "el resumen se entregará también en español."),
+                "Upload a document (PDF or TXT in English)",
+                type=["pdf", "txt"],
+                help="The model operates in English. Input text in other languages may produce poor results.",
                 key="uploader",
             )
 
-            # Detectar nuevos cargues por (nombre, tamaño) para no reextraer
-            # en cada rerun y para escribir el contenido en session_state
-            # ANTES de instanciar el text_area.
             if uploaded_file is not None:
                 file_id = (uploaded_file.name, getattr(uploaded_file, "size", None))
                 if st.session_state.get("_last_uploaded_id") != file_id:
                     try:
-                        with st.spinner(
-                            f"Extrayendo texto de {uploaded_file.name} ..."
-                        ):
+                        with st.spinner(f"Extracting text from {uploaded_file.name}..."):
                             extracted_text = extract_uploaded_text(uploaded_file)
                         if extracted_text and extracted_text.strip():
                             st.session_state["article_input"] = extracted_text
                             st.session_state["_last_uploaded_id"] = file_id
-                            st.success(
-                                f"{CHECK} {len(extracted_text.split()):,} palabras "
-                                f"extraídas de {uploaded_file.name}."
-                            )
+                            st.success(f"{CHECK} {len(extracted_text.split()):,} words extracted from {uploaded_file.name}.")
                         else:
-                            st.warning(
-                                "No se pudo extraer texto del archivo "
-                                "(documento vacío o ilegible)."
-                            )
+                            st.warning("Could not extract text (empty or unreadable document).")
                     except Exception as exc:
-                        st.error(f"Error al procesar el archivo: {exc}")
+                        st.error(f"Error processing file: {exc}")
 
-            # Botones de ejemplo (escriben directamente en session_state
-            # antes de que el text_area se renderice).
-            st.markdown("**Ejemplos de referencia:**")
+            st.markdown("**Example articles:**")
             ex1, ex2, ex3 = st.columns(3)
-            if ex1.button("Política"):
-                st.session_state["article_input"] = example_articles["Política"]
+            if ex1.button("Politics"):
+                st.session_state["article_input"] = example_articles["Politics"]
                 st.session_state["_last_uploaded_id"] = None
                 st.rerun()
-            if ex2.button("Economía"):
-                st.session_state["article_input"] = example_articles["Economía"]
+            if ex2.button("Economy"):
+                st.session_state["article_input"] = example_articles["Economy"]
                 st.session_state["_last_uploaded_id"] = None
                 st.rerun()
-            if ex3.button("Ciencia"):
-                st.session_state["article_input"] = example_articles["Ciencia"]
+            if ex3.button("Science"):
+                st.session_state["article_input"] = example_articles["Science"]
                 st.session_state["_last_uploaded_id"] = None
                 st.rerun()
 
-            # ── text_area gobernado por session_state ──
-            # No se pasa `value=`: cuando hay `key=`, Streamlit toma el
-            # contenido de st.session_state[key]. Así, el texto extraído del
-            # archivo y los ejemplos se reflejan correctamente en el widget.
             article_input = st.text_area(
-                "O pegue el texto a resumir aquí (en inglés):",
+                "Or paste English text to summarize:",
                 height=260,
-                placeholder=(
-                    "Ingrese el artículo o pegue el contenido extraído del archivo. "
-                    "Ejemplo: The president announced a new climate policy ..."
-                ),
+                placeholder="Paste the article here. Example: The president announced a new climate policy...",
                 key="article_input",
             )
 
-            generate_btn = st.button(
-                "Generar resumen", type="primary", use_container_width=True
-            )
+            generate_btn = st.button("Generate summary", type="primary", use_container_width=True)
 
         with col2:
             if st.session_state.get("last_summary"):
                 summary, attn_weights, src_ids = st.session_state["last_summary"]
-                summary_es = st.session_state.get("last_summary_es", "")
-                lang_choice = st.session_state.get(
-                    "last_summary_lang", output_language
-                )
-
-                # Resumen principal en el idioma elegido por el usuario
-                if lang_choice == "Español" and summary_es:
-                    primary_label = "Resumen (español)"
-                    primary_text = summary_es
-                    primary_border = "#10b981"
-                    primary_label_color = "#6ee7b7"
-                    secondary_label = "Versión original generada por el modelo (inglés)"
-                    secondary_text = summary
-                else:
-                    primary_label = "Resumen (inglés)"
-                    primary_text = summary
-                    primary_border = "#6366f1"
-                    primary_label_color = "#818cf8"
-                    secondary_label = ""
-                    secondary_text = ""
 
                 st.markdown(
                     f"""
-                <div class="summary-box" style="border-left-color:{primary_border};">
-                  <div class="summary-label" style="color:{primary_label_color};">{primary_label}</div>
-                  <div class="summary-text">{primary_text}</div>
+                <div class="summary-box">
+                  <div class="summary-label">Generated Summary (English)</div>
+                  <div class="summary-text">{summary}</div>
                 </div>
                 """,
                     unsafe_allow_html=True,
                 )
 
-                # Versión secundaria (solo cuando el principal está en español):
-                # mostramos también el inglés en un expander para fines académicos.
-                if secondary_text:
-                    with st.expander(secondary_label, expanded=False):
-                        st.markdown(
-                            f'<div class="summary-text">{secondary_text}</div>',
-                            unsafe_allow_html=True,
-                        )
-
                 src_words = len(article_input.split()) if article_input else 0
                 trg_words = len(summary.split())
                 ratio = src_words / max(trg_words, 1)
                 mc1, mc2, mc3 = st.columns(3)
-                mc1.metric("Palabras (origen)", f"{src_words:,}")
-                mc2.metric("Palabras (resumen)", f"{trg_words:,}")
-                mc3.metric("Compresión", f"{ratio:.1f}x")
+                mc1.metric("Source words", f"{src_words:,}")
+                mc2.metric("Summary words", f"{trg_words:,}")
+                mc3.metric("Compression", f"{ratio:.1f}x")
 
                 if show_rouge and article_input and summary:
                     try:
@@ -1025,78 +757,29 @@ Vocab     : {len(vocab):,}""",
                             ["rouge1", "rouge2", "rougeL"], use_stemmer=True
                         )
                         sc = scorer.score(article_input[:1500], summary)
-                        st.markdown("**ROUGE (resumen vs. documento):**")
+                        st.markdown("**ROUGE (summary vs. document):**")
                         rc1, rc2, rc3 = st.columns(3)
-                        rc1.markdown(
-                            f'<div class="rouge-badge">R-1: {sc["rouge1"].fmeasure:.3f}</div>',
-                            unsafe_allow_html=True,
-                        )
-                        rc2.markdown(
-                            f'<div class="rouge-badge">R-2: {sc["rouge2"].fmeasure:.3f}</div>',
-                            unsafe_allow_html=True,
-                        )
-                        rc3.markdown(
-                            f'<div class="rouge-badge">R-L: {sc["rougeL"].fmeasure:.3f}</div>',
-                            unsafe_allow_html=True,
-                        )
+                        rc1.markdown(f'<div class="rouge-badge">R-1: {sc["rouge1"].fmeasure:.3f}</div>', unsafe_allow_html=True)
+                        rc2.markdown(f'<div class="rouge-badge">R-2: {sc["rouge2"].fmeasure:.3f}</div>', unsafe_allow_html=True)
+                        rc3.markdown(f'<div class="rouge-badge">R-L: {sc["rougeL"].fmeasure:.3f}</div>', unsafe_allow_html=True)
                     except Exception:
                         pass
 
-                # Persistir el contexto del documento para el chat
                 ctx = st.session_state.setdefault("chat_context", {})
                 ctx["last_article"] = article_input
                 ctx["last_summary"] = summary
-                ctx["last_summary_es"] = st.session_state.get("last_summary_es", "")
 
-        # Acción del botón
+        # Generate button action
         if generate_btn and article_input and len(article_input.strip()) > 20:
             try:
-                # ── (1) Detección de idioma y traducción ES → EN si aplica ──
-                lang = detect_language(article_input)
-                input_for_model = article_input
-                if lang == "es" and auto_translate_input:
-                    es_en, es_en_err = load_translator_es_en()
-                    if es_en is None:
-                        st.warning(
-                            "Se detectó español pero no fue posible cargar el "
-                            f"traductor ES → EN. Detalle: `{es_en_err}`. "
-                            "Si el error menciona memoria, la app excede el "
-                            "límite de RAM del plan gratuito de Streamlit Cloud. "
-                            "Continuando con el texto original."
-                        )
-                    else:
-                        with st.spinner(
-                            f"Texto detectado en español. Traduciendo a inglés "
-                            f"antes de resumir ..."
-                        ):
-                            input_for_model = translate_es_to_en(
-                                article_input, es_en
-                            )
-                        st.info(
-                            f"{CHECK} Entrada traducida al inglés "
-                            f"({len(input_for_model.split()):,} palabras)."
-                        )
-                elif lang == "es" and not auto_translate_input:
-                    st.warning(
-                        "El texto parece estar en español, pero la traducción "
-                        "automática ES → EN está desactivada. El modelo está "
-                        "entrenado en inglés; los resultados pueden ser pobres."
-                    )
-
-                # ── (2) Resumen ──
                 if backend.startswith("BART"):
                     summarizer, summ_err = load_hf_summarizer()
                     if summarizer is None:
-                        st.error(
-                            "No fue posible cargar el modelo de summarización "
-                            f"`{HF_SUMMARIZER_MODEL}`. Detalle: `{summ_err}`."
-                        )
+                        st.error(f"Could not load `{HF_SUMMARIZER_MODEL}`. Detail: `{summ_err}`.")
                         st.stop()
-                    with st.spinner(
-                        f"Generando resumen con {HF_SUMMARIZER_MODEL} ..."
-                    ):
+                    with st.spinner(f"Generating summary with {HF_SUMMARIZER_MODEL}..."):
                         summary_en = generate_summary_bart(
-                            input_for_model, summarizer,
+                            article_input, summarizer,
                             max_length=max_len,
                             min_length=max(20, max_len // 4),
                             num_beams=num_beams,
@@ -1105,70 +788,42 @@ Vocab     : {len(vocab):,}""",
                 else:
                     if not model_loaded:
                         st.warning(
-                            "Está usando el backend *Modelo entrenado* en modo "
-                            "demostración (pesos aleatorios). El resumen carecerá "
-                            "de sentido. Cambie a BART en la barra lateral."
+                            "Using the trained model backend in demo mode (random weights). "
+                            "Switch to BART in the sidebar for meaningful output."
                         )
-                    with st.spinner(
-                        "Generando resumen con el modelo Encoder-Decoder ..."
-                    ):
-                        summary_en, attn_weights, src_ids = generate_summary_custom(
-                            model, vocab, input_for_model,
+                    with st.spinner("Generating summary with Encoder-Decoder model..."):
+                        raw_summary, attn_weights, src_ids = generate_summary_custom(
+                            model, vocab, article_input,
                             max_len=max_len, temperature=temperature,
                             top_k=top_k, top_p=top_p, device=device,
                         )
-                        st.session_state["last_summary"] = (
-                            summary_en, attn_weights, src_ids
-                        )
+                        summary_en = clean_summary(raw_summary)
+                        st.session_state["last_summary"] = (summary_en, attn_weights, src_ids)
 
-                # Persistir el documento original (no el traducido) para el chat
                 st.session_state["last_article_text"] = article_input
-
-                # ── (3) Traducción del resumen al idioma seleccionado ──
-                st.session_state["last_summary_lang"] = output_language
-                if output_language == "Español":
-                    en_es, en_es_err = load_translator_en_es()
-                    if en_es is None:
-                        st.warning(
-                            "No fue posible cargar el traductor EN → ES. "
-                            f"Detalle: `{en_es_err}`. "
-                            "Mostrando el resumen en inglés."
-                        )
-                        st.session_state["last_summary_es"] = ""
-                    else:
-                        with st.spinner("Traduciendo resumen al español ..."):
-                            st.session_state["last_summary_es"] = translate_en_to_es(
-                                summary_en, en_es
-                            )
-                else:
-                    # Idioma de salida = Inglés: no se requiere traducción
-                    st.session_state["last_summary_es"] = ""
-
                 st.rerun()
             except Exception as exc:
-                st.error(f"Error durante la generación: {exc}")
+                st.error(f"Error during generation: {exc}")
 
-        # Mapa de atención
+        # Attention map
         if (show_attention
-                and backend.startswith("Modelo entrenado")
+                and backend.startswith("Trained model")
                 and st.session_state.get("last_summary")):
             summary, attn_weights, _ = st.session_state["last_summary"]
             article_text = st.session_state.get("last_article_text", "")
             if attn_weights and article_text:
                 st.markdown("---")
-                st.markdown('<div class="section-title">Mapa de atención</div>',
-                            unsafe_allow_html=True)
+                st.markdown('<div class="section-title">Attention Map</div>', unsafe_allow_html=True)
                 fig = render_attention_map(article_text, summary, attn_weights)
                 if fig is not None:
                     st.pyplot(fig)
                     plt.close(fig)
 
     # ════════════════════════════════════════════════════════════════════════
-    # TAB 2 — Chat interactivo (con historial persistente)
+    # TAB 2 — Chat
     # ════════════════════════════════════════════════════════════════════════
     with tab2:
-        st.markdown('<div class="section-title">Chat interactivo</div>',
-                    unsafe_allow_html=True)
+        st.markdown('<div class="section-title">Interactive Chat</div>', unsafe_allow_html=True)
 
         if "chat_history" not in st.session_state:
             st.session_state["chat_history"] = []
@@ -1177,133 +832,116 @@ Vocab     : {len(vocab):,}""",
 
         ctx = st.session_state["chat_context"]
         if not ctx.get("last_article"):
-            st.info(
-                "Genere primero un resumen en la pestaña **Resumidor** "
-                "para habilitar el chat contextual."
-            )
+            st.info("Generate a summary in the **Summarizer** tab first to enable contextual chat.")
         else:
-            st.success(
-                f"{CHECK} Documento activo: {len(ctx['last_article'].split()):,} palabras."
-            )
+            st.success(f"{CHECK} Active document: {len(ctx['last_article'].split()):,} words.")
 
-        # Render histórico con la API moderna st.chat_message
         for msg in st.session_state["chat_history"]:
             with st.chat_message(msg["role"]):
                 st.markdown(msg["content"], unsafe_allow_html=True)
                 if msg.get("time"):
                     st.caption(msg["time"])
 
-        # Atajos de preguntas frecuentes
-        st.markdown("**Preguntas frecuentes:**")
+        st.markdown("**Quick questions:**")
         q1, q2, q3, q4 = st.columns(4)
         quick = {
-            "tema": "¿De qué trata el documento?",
-            "entidades": "¿Qué personas o entidades se mencionan?",
-            "atencion": "¿Cómo funciona el mecanismo de atención?",
-            "rouge": "¿Cómo se interpreta la métrica ROUGE?",
+            "topic":      "What is this document about?",
+            "entities":   "Who or what is mentioned?",
+            "attention":  "How does the attention mechanism work?",
+            "rouge":      "How do I interpret ROUGE scores?",
         }
         triggered = None
-        if q1.button(quick["tema"]):     triggered = quick["tema"]
-        if q2.button(quick["entidades"]): triggered = quick["entidades"]
-        if q3.button(quick["atencion"]):  triggered = quick["atencion"]
-        if q4.button(quick["rouge"]):     triggered = quick["rouge"]
+        if q1.button(quick["topic"]):     triggered = quick["topic"]
+        if q2.button(quick["entities"]): triggered = quick["entities"]
+        if q3.button(quick["attention"]): triggered = quick["attention"]
+        if q4.button(quick["rouge"]):    triggered = quick["rouge"]
 
-        # Entrada de chat
-        user_input = st.chat_input("Escriba su pregunta sobre el documento ...")
+        user_input = st.chat_input("Ask something about the document...")
         new_msg = triggered or user_input
 
         if new_msg:
             ts = time.strftime("%H:%M")
-            st.session_state["chat_history"].append(
-                {"role": "user", "content": new_msg, "time": ts}
-            )
+            st.session_state["chat_history"].append({"role": "user", "content": new_msg, "time": ts})
             response = generate_chat_response(
                 new_msg,
                 ctx.get("last_article", ""),
                 ctx.get("last_summary", ""),
             )
-            st.session_state["chat_history"].append(
-                {"role": "assistant", "content": response, "time": ts}
-            )
+            st.session_state["chat_history"].append({"role": "assistant", "content": response, "time": ts})
             st.rerun()
 
         if st.session_state["chat_history"]:
-            if st.button("Limpiar historial"):
+            if st.button("Clear history"):
                 st.session_state["chat_history"] = []
                 st.rerun()
 
     # ════════════════════════════════════════════════════════════════════════
-    # TAB 3 — Métricas
+    # TAB 3 — Metrics
     # ════════════════════════════════════════════════════════════════════════
     with tab3:
-        st.markdown('<div class="section-title">Métricas de evaluación</div>',
-                    unsafe_allow_html=True)
+        st.markdown('<div class="section-title">Evaluation Metrics</div>', unsafe_allow_html=True)
 
         col_a, col_b = st.columns([2, 1])
 
         with col_a:
-            st.markdown("#### Comparación con la literatura")
+            st.markdown("#### Literature comparison")
             st.markdown(
                 f"""
                 <table class="lit-table">
                   <thead>
-                    <tr><th>Modelo</th><th>Tipo</th><th>ROUGE-1</th><th>ROUGE-2</th><th>ROUGE-L</th><th>Año</th></tr>
+                    <tr><th>Model</th><th>Type</th><th>ROUGE-1</th><th>ROUGE-2</th><th>ROUGE-L</th><th>Year</th></tr>
                   </thead>
                   <tbody>
-                    <tr><td>Lead-3</td><td>Extractivo (baseline)</td><td>0.401</td><td>0.175</td><td>0.365</td><td>—</td></tr>
-                    <tr><td>Seq2Seq</td><td>Abstractivo básico</td><td>0.358</td><td>0.144</td><td>0.330</td><td>2015</td></tr>
-                    <tr><td>Seq2Seq + Atención</td><td>Abstractivo</td><td>0.374</td><td>0.158</td><td>0.346</td><td>2015</td></tr>
-                    <tr><td>Pointer-Generator</td><td>Abstractivo + Coverage</td><td>0.398</td><td>0.173</td><td>0.367</td><td>2017</td></tr>
-                    <tr><td>UniLM</td><td>Transformer fine-tuned</td><td>0.435</td><td>0.203</td><td>0.402</td><td>2019</td></tr>
-                    <tr><td>PEGASUS</td><td>Pre-entrenado abstractivo</td><td>0.447</td><td>0.214</td><td>0.417</td><td>2020</td></tr>
-                    <tr><td>BART</td><td>Pre-entrenado abstractivo</td><td>0.448</td><td>0.214</td><td>0.412</td><td>2020</td></tr>
-                    <tr class="highlight"><td>Modelo propuesto {CHECK}</td><td>Encoder-Decoder + GloVe</td><td>~0.30–0.38</td><td>~0.12–0.16</td><td>~0.28–0.35</td><td>2024</td></tr>
+                    <tr><td>Lead-3</td><td>Extractive (baseline)</td><td>0.401</td><td>0.175</td><td>0.365</td><td>—</td></tr>
+                    <tr><td>Seq2Seq</td><td>Basic abstractive</td><td>0.358</td><td>0.144</td><td>0.330</td><td>2015</td></tr>
+                    <tr><td>Seq2Seq + Attention</td><td>Abstractive</td><td>0.374</td><td>0.158</td><td>0.346</td><td>2015</td></tr>
+                    <tr><td>Pointer-Generator</td><td>Abstractive + Coverage</td><td>0.398</td><td>0.173</td><td>0.367</td><td>2017</td></tr>
+                    <tr><td>UniLM</td><td>Fine-tuned Transformer</td><td>0.435</td><td>0.203</td><td>0.402</td><td>2019</td></tr>
+                    <tr><td>PEGASUS</td><td>Abstractive pre-trained</td><td>0.447</td><td>0.214</td><td>0.417</td><td>2020</td></tr>
+                    <tr><td>BART</td><td>Abstractive pre-trained</td><td>0.448</td><td>0.214</td><td>0.412</td><td>2020</td></tr>
+                    <tr class="highlight"><td>Proposed model {CHECK}</td><td>Encoder-Decoder + GloVe</td><td>~0.30–0.38</td><td>~0.12–0.16</td><td>~0.28–0.35</td><td>2024</td></tr>
                   </tbody>
                 </table>
                 """,
                 unsafe_allow_html=True,
             )
-
             st.markdown(
                 """
-> **Nota.** Los modelos *state-of-the-art* (BART, PEGASUS) emplean
-> arquitecturas Transformer con cientos de millones de parámetros y
-> pre-entrenamiento masivo. El modelo propuesto en este taller cumple un rol
-> pedagógico: ilustra los fundamentos del paradigma Encoder-Decoder con
-> mecanismo de atención.
+> **Note.** State-of-the-art models (BART, PEGASUS) use Transformer architectures
+> with hundreds of millions of parameters and massive pre-training. The proposed model
+> serves a pedagogical purpose: illustrating Encoder-Decoder fundamentals with attention.
 """
             )
 
         with col_b:
-            st.markdown("#### Interpretación de ROUGE")
+            st.markdown("#### ROUGE interpretation")
             st.markdown(
                 """
-**ROUGE-N** mide solapamiento de n-gramas entre el resumen generado
-y el de referencia:
+**ROUGE-N** measures n-gram overlap between the generated and reference summary:
 
 ```
-ROUGE-1 : unigramas
-ROUGE-2 : bigramas
-ROUGE-L : subsecuencia común más larga
+ROUGE-1 : unigrams
+ROUGE-2 : bigrams
+ROUGE-L : longest common subsequence
 ```
 
-| Score | Calidad |
+| Score | Quality |
 |-------|---------|
-| > 0.40 | Excelente |
-| 0.30 – 0.40 | Bueno |
-| 0.20 – 0.30 | Aceptable |
-| < 0.20 | Bajo |
+| > 0.40 | Excellent |
+| 0.30 – 0.40 | Good |
+| 0.20 – 0.30 | Acceptable |
+| < 0.20 | Low |
 
-**Métricas complementarias:** BERTScore (semántica), METEOR (morfología),
-BLEU (n-gramas), Perplexity (entrenamiento).
+**Complementary metrics:** BERTScore (semantic), METEOR (morphology),
+BLEU (n-grams), Perplexity (training).
 """
             )
 
         st.markdown("---")
-        st.markdown("#### Comparación gráfica de ROUGE")
+        st.markdown("#### ROUGE comparison chart")
 
-        systems = ["Lead-3", "Seq2Seq\nbásico", "Seq2Seq\n+ Atención",
-                   "Pointer-Gen", "BART", "Propuesto"]
+        systems = ["Lead-3", "Seq2Seq\nbasic", "Seq2Seq\n+ Attention",
+                   "Pointer-Gen", "BART", "Proposed"]
         r1 = [0.401, 0.358, 0.374, 0.398, 0.448, 0.340]
         r2 = [0.175, 0.144, 0.158, 0.173, 0.214, 0.140]
         rl = [0.365, 0.330, 0.346, 0.367, 0.412, 0.320]
@@ -1318,25 +956,16 @@ BLEU (n-gramas), Perplexity (entrenamiento).
         for i, (vals, color, label) in enumerate(
             zip([r1, r2, rl], colors, ["ROUGE-1", "ROUGE-2", "ROUGE-L"])
         ):
-            bars = ax.bar(
-                x + i * width, vals, width, label=label, color=color,
-                alpha=0.85, edgecolor="#0f172a",
-            )
+            bars = ax.bar(x + i * width, vals, width, label=label, color=color, alpha=0.85, edgecolor="#0f172a")
             for j, (bar, v) in enumerate(zip(bars, vals)):
-                ax.text(
-                    bar.get_x() + bar.get_width() / 2,
-                    bar.get_height() + 0.005,
-                    f"{v:.3f}",
-                    ha="center",
-                    va="bottom",
-                    fontsize=7,
-                    color="#ffffff" if j == len(systems) - 1 else "#94a3b8",
-                )
+                ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.005,
+                        f"{v:.3f}", ha="center", va="bottom", fontsize=7,
+                        color="#ffffff" if j == len(systems) - 1 else "#94a3b8")
 
         ax.set_xticks(x + width)
         ax.set_xticklabels(systems, color="#94a3b8", fontsize=9)
         ax.set_ylim(0, 0.55)
-        ax.set_ylabel("Score ROUGE (F-measure)", color="#94a3b8")
+        ax.set_ylabel("ROUGE Score (F-measure)", color="#94a3b8")
         ax.tick_params(colors="#64748b")
         ax.legend(framealpha=0.2, labelcolor="#e2e8f0")
         for spine in ax.spines.values():
@@ -1349,25 +978,24 @@ BLEU (n-gramas), Perplexity (entrenamiento).
         plt.close(fig)
 
     # ════════════════════════════════════════════════════════════════════════
-    # TAB 4 — Laboratorio
+    # TAB 4 — Lab
     # ════════════════════════════════════════════════════════════════════════
     with tab4:
-        st.markdown('<div class="section-title">Laboratorio de experimentación</div>',
-                    unsafe_allow_html=True)
+        st.markdown('<div class="section-title">Experimentation Lab</div>', unsafe_allow_html=True)
 
         col_lab1, col_lab2 = st.columns(2)
 
         with col_lab1:
-            st.markdown("#### Efecto de la temperatura")
+            st.markdown("#### Effect of temperature")
             st.markdown(
-                """
-La temperatura $T$ modifica la distribución softmax sobre el vocabulario:
+                r"""
+The temperature $T$ modifies the softmax distribution over the vocabulary:
 
-$$p_i = \\frac{\\exp(z_i/T)}{\\sum_j \\exp(z_j/T)}$$
+$$p_i = \frac{\exp(z_i/T)}{\sum_j \exp(z_j/T)}$$
 
-- $T \\to 0$: salida casi determinística (greedy).
-- $T = 1$: distribución original del modelo.
-- $T > 1$: distribución más uniforme y diversa.
+- $T \to 0$: near-deterministic (greedy).
+- $T = 1$: model's original distribution.
+- $T > 1$: more uniform and diverse.
 """
             )
 
@@ -1377,61 +1005,61 @@ $$p_i = \\frac{\\exp(z_i/T)}{\\sum_j \\exp(z_j/T)}$$
             )
             temperatures = [0.5, 0.8, 1.0, 1.2, 1.5]
 
-            if st.button("Ejecutar experimento de temperatura"):
+            if st.button("Run temperature experiment"):
                 results = []
-                with st.spinner("Generando con distintas temperaturas ..."):
+                with st.spinner("Generating with different temperatures..."):
                     for t in temperatures:
-                        summ, _, _ = generate_summary_custom(
-                            model, vocab, demo_text, max_len=30, temperature=t,
-                            device=device,
+                        raw, _, _ = generate_summary_custom(
+                            model, vocab, demo_text, max_len=30, temperature=t, device=device,
                         )
+                        summ = clean_summary(raw)
                         results.append((t, summ))
-                st.markdown("**Resultados del experimento:**")
+                st.markdown("**Results:**")
                 for t, s in results:
                     st.markdown(f"- **T = {t}**: `{s}`")
 
-            st.markdown("#### Estrategias de decodificación")
+            st.markdown("#### Decoding strategies")
             st.markdown(
                 """
-| Estrategia | Característica |
-|-----------|----------------|
-| Greedy | Toma el argmax en cada paso. Determinística. |
-| Beam search | Mantiene k hipótesis simultáneas; favorece coherencia. |
-| top-k sampling | Filtra a los k tokens más probables. |
-| top-p (nucleus) | Filtra a la masa acumulada p; tamaño dinámico. |
-| Temperatura | Escala los logits antes del softmax. |
+| Strategy | Characteristic |
+|----------|----------------|
+| Greedy | Argmax at each step. Deterministic. |
+| Beam search | Keeps k hypotheses; favors coherence. |
+| top-k sampling | Filters to k most probable tokens. |
+| top-p (nucleus) | Filters to cumulative mass p; dynamic size. |
+| Temperature | Scales logits before softmax. |
 """
             )
 
         with col_lab2:
-            st.markdown("#### Línea de tiempo de arquitecturas Seq2Seq")
+            st.markdown("#### Seq2Seq architecture timeline")
             st.markdown(
                 """
-| Año | Modelo | Innovación |
-|-----|--------|-----------|
-| 2014 | Seq2Seq | Encoder-Decoder básico |
-| 2015 | Seq2Seq + Atención | Bahdanau et al. |
-| 2017 | Pointer-Generator | Mecanismo de copia |
-| 2017 | Transformer | Self-attention puro |
-| 2018 | BERT | Pre-entrenamiento bidireccional |
-| 2019 | UniLM / T5 | Generación unificada |
+| Year | Model | Innovation |
+|------|-------|-----------|
+| 2014 | Seq2Seq | Basic Encoder-Decoder |
+| 2015 | Seq2Seq + Attention | Bahdanau et al. |
+| 2017 | Pointer-Generator | Copy mechanism |
+| 2017 | Transformer | Pure self-attention |
+| 2018 | BERT | Bidirectional pre-training |
+| 2019 | UniLM / T5 | Unified generation |
 | 2020 | BART | Denoising pre-training |
 | 2020 | PEGASUS | Gap-sentence masking |
 """
             )
 
-            st.markdown("#### Ventajas de los Transformers sobre LSTM")
+            st.markdown("#### Transformers vs. LSTM advantages")
             advantages = [
-                ("Paralelización", "El LSTM es secuencial; el Transformer paraleliza el cálculo."),
-                ("Dependencias largas", "Atención O(1) entre cualesquiera dos posiciones."),
-                ("Pre-entrenamiento", "Transferencia desde grandes corpus genéricos."),
-                ("Escalabilidad", "Las leyes de escala favorecen modelos masivos."),
+                ("Parallelization", "LSTM is sequential; Transformers parallelize computation."),
+                ("Long-range dependencies", "Attention is O(1) between any two positions."),
+                ("Pre-training", "Transfer learning from large generic corpora."),
+                ("Scalability", "Scaling laws favor massive models."),
             ]
             for title, desc in advantages:
                 st.markdown(f"- **{title}.** {desc}")
 
         st.markdown("---")
-        st.markdown("#### Curvas teóricas: Perplexity vs. épocas")
+        st.markdown("#### Theoretical curves: Perplexity vs. epochs")
 
         epochs = np.arange(1, 11)
         train_ppl = 200 * np.exp(-0.3 * epochs) + 15 + np.random.randn(10) * 2
@@ -1448,16 +1076,16 @@ $$p_i = \\frac{\\exp(z_i/T)}{\\sum_j \\exp(z_j/T)}$$
 
         ax1.plot(epochs, train_ppl, "o-", color="#6366f1", linewidth=2, label="Train PPL")
         ax1.plot(epochs, val_ppl, "o-", color="#10b981", linewidth=2, label="Val PPL")
-        ax1.set_xlabel("Época", color="#94a3b8")
+        ax1.set_xlabel("Epoch", color="#94a3b8")
         ax1.set_ylabel("Perplexity", color="#94a3b8")
         ax1.set_title("Perplexity", color="#e2e8f0")
         ax1.legend(framealpha=0.2, labelcolor="#e2e8f0")
 
         tf_ratios = np.linspace(0.9, 0.3, 10)
         ax2.plot(epochs, tf_ratios, "o-", color="#f59e0b", linewidth=2)
-        ax2.set_xlabel("Época", color="#94a3b8")
+        ax2.set_xlabel("Epoch", color="#94a3b8")
         ax2.set_ylabel("Teacher Forcing Ratio", color="#94a3b8")
-        ax2.set_title("Programa de Teacher Forcing", color="#e2e8f0")
+        ax2.set_title("Teacher Forcing Schedule", color="#e2e8f0")
         ax2.set_ylim(0, 1)
 
         plt.tight_layout()
